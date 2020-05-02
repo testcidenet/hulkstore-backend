@@ -7,8 +7,10 @@ import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort.Direction;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,7 +26,7 @@ import com.testcidenet.hulkstore.repository.ProductRepository;
 
 import net.minidev.json.JSONObject;
 
-//@CrossOrigin(origins = "http://localhost:4000")
+@CrossOrigin(origins = "http://localhost:4200")
 @RestController
 @RequestMapping("/api")
 public class ProductController {
@@ -52,22 +54,26 @@ public class ProductController {
 	}
 
 	@GetMapping("/productsFind")
-	public ResponseEntity<JSONObject> getAllProductsPageable(@RequestParam(required = true) int page) {
+	public ResponseEntity<JSONObject> getAllProductsPageable(@RequestParam(required = false) String name,
+			@RequestParam(required = true) int page, @RequestParam(required = true) int itemPage,
+			@RequestParam(required = true) String order) {
 		try {
-			//List<Product> products = new ArrayList<Product>();
+			Page<Product> pages = null;
+			List<Product> products = new ArrayList<Product>();
 			JSONObject entity = new JSONObject();
+			Direction dir = (order.equals("asc")) ? Direction.ASC : Direction.DESC;
 
-			Page<Product> pages = productRepository.findAll(PageRequest.of(page, 10));
-			// products = pages.getContent();
-			
+			if (name == null)
+				pages = productRepository.findAll(PageRequest.of(page, itemPage));
+			else
+				pages = productRepository.findByNameContainingIgnoreCase(name,
+						PageRequest.of(page, itemPage, dir, "name"));
+
+			products = pages.getContent();
+
 			entity.put("pages", pages.getTotalPages());
-			entity.put("totalel", pages.getTotalElements());
-			entity.put("items", pages.getContent());
-
-			if (pages.getContent().isEmpty()) {
-				return new ResponseEntity<>(entity, HttpStatus.OK);
-			}
-
+			entity.put("total_elements", pages.getTotalElements());
+			entity.put("products", products);
 
 			return new ResponseEntity<JSONObject>(entity, HttpStatus.OK);
 		} catch (Exception e) {
@@ -89,12 +95,19 @@ public class ProductController {
 	@PostMapping("/products")
 	public ResponseEntity<Product> createProduct(@RequestBody Product product) {
 		try {
-			Product _product = productRepository
-					.save(new Product(product.getName(), product.getDescription(), product.getStock()));
-			return new ResponseEntity<>(_product, HttpStatus.CREATED);
+			Optional<Product> productData = productRepository.findByNameIgnoreCase(product.getName());
+			if (!productData.isPresent()) {
+				Product _product = productRepository
+						.save(new Product(product.getName(), product.getDescription(), product.getStock()));
+				return new ResponseEntity<>(_product, HttpStatus.CREATED);
+
+			} else {
+				return new ResponseEntity<>(HttpStatus.LOCKED);
+			}
 		} catch (Exception e) {
 			return new ResponseEntity<>(null, HttpStatus.EXPECTATION_FAILED);
 		}
+
 	}
 
 	@PutMapping("/products/{id}")
@@ -122,6 +135,7 @@ public class ProductController {
 		}
 	}
 
+	
 	@DeleteMapping("/products")
 	public ResponseEntity<HttpStatus> deleteAllProducts() {
 		try {
